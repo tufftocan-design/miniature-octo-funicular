@@ -1,0 +1,354 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+
+local player = Players.LocalPlayer
+local isZombieMode = false
+local settingsOpen = false
+
+local CONFIG_PATH = "ZombieAnimConfig.json"
+
+local ANIM_STATES = {"Idle","Idle2","Walk","Run","Jump","Fall","Climb","Swim","SwimIdle"}
+
+local ZOMBIE_ANIMS = {
+	Idle = "rbxassetid://616158929",
+	Idle2 = "rbxassetid://616160636",
+	Walk = "rbxassetid://616168032",
+	Run = "rbxassetid://616163682",
+	Jump = "rbxassetid://616161997",
+	Fall = "rbxassetid://616157476",
+	Climb = "rbxassetid://616165109",
+	Swim = "rbxassetid://616165109",
+	SwimIdle = "rbxassetid://616166655",
+}
+
+local FOLDER_MAP = {
+	Idle = "idle", Idle2 = "idle", Walk = "walk", Run = "run",
+	Jump = "jump", Fall = "fall", Climb = "climb", Swim = "swim", SwimIdle = "swimidle",
+}
+
+local DEFAULT_ANIMS = {}
+local enabledStates = {}
+
+local function loadConfig()
+	if isfile and isfile(CONFIG_PATH) then
+		local ok, data = pcall(function()
+			return HttpService:JSONDecode(readfile(CONFIG_PATH))
+		end)
+		if ok and type(data) == "table" then
+			for _, state in ipairs(ANIM_STATES) do
+				enabledStates[state] = data[state]
+				if enabledStates[state] == nil then enabledStates[state] = true end
+			end
+			return
+		end
+	end
+	for _, state in ipairs(ANIM_STATES) do
+		enabledStates[state] = true
+	end
+end
+
+local function saveConfig()
+	if writefile then
+		writefile(CONFIG_PATH, HttpService:JSONEncode(enabledStates))
+	end
+end
+
+loadConfig()
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ZombieToggleGUI"
+screenGui.ResetOnSpawn = false
+screenGui.DisplayOrder = 100
+screenGui.IgnoreGuiInset = true
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 220, 0, 70)
+mainFrame.Position = UDim2.new(0.5, -110, 0.2, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.ClipsDescendants = false
+mainFrame.ZIndex = 1
+mainFrame.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 14)
+corner.Parent = mainFrame
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(200, 40, 40)
+stroke.Thickness = 2
+stroke.Parent = mainFrame
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(1, -54, 1, -16)
+toggleButton.Position = UDim2.new(0, 8, 0, 8)
+toggleButton.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+toggleButton.Text = "Zombie Anim"
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.TextScaled = true
+toggleButton.Font = Enum.Font.GothamBold
+toggleButton.ZIndex = 2
+toggleButton.Parent = mainFrame
+
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 10)
+btnCorner.Parent = toggleButton
+
+local btnStroke = Instance.new("UIStroke")
+btnStroke.Thickness = 2
+btnStroke.Parent = toggleButton
+
+local settingsButton = Instance.new("TextButton")
+settingsButton.Size = UDim2.new(0, 38, 1, -16)
+settingsButton.Position = UDim2.new(1, -46, 0, 8)
+settingsButton.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+settingsButton.Text = "⚙️"
+settingsButton.TextScaled = true
+settingsButton.Font = Enum.Font.GothamBold
+settingsButton.ZIndex = 2
+settingsButton.Parent = mainFrame
+
+local sCorner = Instance.new("UICorner")
+sCorner.CornerRadius = UDim.new(0, 10)
+sCorner.Parent = settingsButton
+
+local sStroke = Instance.new("UIStroke")
+sStroke.Thickness = 2
+sStroke.Parent = settingsButton
+
+-- Dropdown is now parented to screenGui directly, NOT mainFrame, to avoid any
+-- ancestor clipping/sizing issues. Position is synced manually to follow mainFrame.
+local dropFrame = Instance.new("Frame")
+dropFrame.Size = UDim2.new(0, 220, 0, #ANIM_STATES * 32 + 14)
+dropFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+dropFrame.BorderSizePixel = 0
+dropFrame.Visible = false
+dropFrame.ZIndex = 10
+dropFrame.ClipsDescendants = false
+dropFrame.Parent = screenGui
+
+local dropCorner = Instance.new("UICorner")
+dropCorner.CornerRadius = UDim.new(0, 12)
+dropCorner.Parent = dropFrame
+
+local dropStroke = Instance.new("UIStroke")
+dropStroke.Color = Color3.fromRGB(200, 40, 40)
+dropStroke.Thickness = 2
+dropStroke.Parent = dropFrame
+
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 4)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Parent = dropFrame
+
+local padding = Instance.new("UIPadding")
+padding.PaddingTop = UDim.new(0, 6)
+padding.PaddingBottom = UDim.new(0, 6)
+padding.PaddingLeft = UDim.new(0, 8)
+padding.PaddingRight = UDim.new(0, 8)
+padding.Parent = dropFrame
+
+local function syncDropdownPosition()
+	local absPos = mainFrame.AbsolutePosition
+	local absSize = mainFrame.AbsoluteSize
+	dropFrame.Position = UDim2.new(0, absPos.X, 0, absPos.Y + absSize.Y + 6)
+end
+
+mainFrame:GetPropertyChangedSignal("Position"):Connect(syncDropdownPosition)
+mainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(syncDropdownPosition)
+
+local dragging = false
+local dragStart, startPos
+
+mainFrame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = mainFrame.Position
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local delta = input.Position - dragStart
+		mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		syncDropdownPosition()
+	end
+end)
+
+mainFrame.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = false
+	end
+end)
+
+local function getAnimIdInFolder(folder, folderName)
+	local sub = folder:FindFirstChild(folderName)
+	if sub then
+		for _, anim in ipairs(sub:GetChildren()) do
+			if anim:IsA("Animation") then
+				return anim.AnimationId
+			end
+		end
+	end
+	return nil
+end
+
+local function setAnim(folder, folderName, animId)
+	local sub = folder:FindFirstChild(folderName)
+	if sub then
+		local applied = false
+		for _, anim in ipairs(sub:GetChildren()) do
+			if anim:IsA("Animation") then
+				anim.AnimationId = animId
+				applied = true
+			end
+		end
+		if not applied then
+			local newAnim = Instance.new("Animation")
+			newAnim.AnimationId = animId
+			newAnim.Parent = sub
+		end
+		return true
+	end
+	return false
+end
+
+local function captureDefaults(animate)
+	for _, state in ipairs(ANIM_STATES) do
+		if DEFAULT_ANIMS[state] == nil then
+			local folderName = FOLDER_MAP[state]
+			local id = getAnimIdInFolder(animate, folderName)
+			if id then
+				DEFAULT_ANIMS[state] = id
+			end
+		end
+	end
+end
+
+local function applyZombieAnims(animate)
+	if not animate then return false end
+	captureDefaults(animate)
+	local ok = false
+	for _, state in ipairs(ANIM_STATES) do
+		local folderName = FOLDER_MAP[state]
+		local targetId
+		if enabledStates[state] then
+			targetId = ZOMBIE_ANIMS[state]
+		else
+			targetId = DEFAULT_ANIMS[state]
+		end
+		if targetId then
+			if setAnim(animate, folderName, targetId) then ok = true end
+		end
+	end
+	return ok
+end
+
+local function activateZombieMode()
+	if isZombieMode then return end
+
+	local char = player.Character
+	if not char then return end
+	local animate = char:FindFirstChild("Animate")
+	if not animate then return end
+
+	local success = applyZombieAnims(animate)
+
+	if success then
+		isZombieMode = true
+		toggleButton.BackgroundColor3 = Color3.fromRGB(0, 170, 70)
+	end
+end
+
+local function refreshCurrentAnims()
+	if not isZombieMode then return end
+	local char = player.Character
+	if not char then return end
+	local animate = char:FindFirstChild("Animate")
+	if not animate then return end
+	applyZombieAnims(animate)
+end
+
+toggleButton.MouseButton1Click:Connect(activateZombieMode)
+
+for i, state in ipairs(ANIM_STATES) do
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, 0, 0, 28)
+	row.BackgroundTransparency = 1
+	row.LayoutOrder = i
+	row.ZIndex = 11
+	row.Parent = dropFrame
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0.55, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = state
+	label.TextColor3 = Color3.fromRGB(230, 230, 230)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Font = Enum.Font.Gotham
+	label.TextScaled = true
+	label.ZIndex = 12
+	label.Parent = row
+
+	local stateToggle = Instance.new("TextButton")
+	stateToggle.Size = UDim2.new(0, 60, 0, 22)
+	stateToggle.AnchorPoint = Vector2.new(1, 0.5)
+	stateToggle.Position = UDim2.new(1, 0, 0.5, 0)
+	stateToggle.Font = Enum.Font.GothamBold
+	stateToggle.TextScaled = true
+	stateToggle.ZIndex = 12
+	stateToggle.Parent = row
+
+	local tCorner = Instance.new("UICorner")
+	tCorner.CornerRadius = UDim.new(0, 8)
+	tCorner.Parent = stateToggle
+
+	local function refreshVisual()
+		if enabledStates[state] then
+			stateToggle.Text = "ON"
+			stateToggle.BackgroundColor3 = Color3.fromRGB(0, 170, 70)
+		else
+			stateToggle.Text = "OFF"
+			stateToggle.BackgroundColor3 = Color3.fromRGB(150, 30, 30)
+		end
+	end
+	refreshVisual()
+
+	stateToggle.MouseButton1Click:Connect(function()
+		enabledStates[state] = not enabledStates[state]
+		refreshVisual()
+		saveConfig()
+		refreshCurrentAnims()
+	end)
+end
+
+settingsButton.MouseButton1Click:Connect(function()
+	settingsOpen = not settingsOpen
+	syncDropdownPosition()
+	dropFrame.Visible = settingsOpen
+end)
+
+syncDropdownPosition()
+
+player.CharacterAdded:Connect(function()
+	wait(1.5)
+	toggleButton.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+	for _, state in ipairs(ANIM_STATES) do
+		DEFAULT_ANIMS[state] = nil
+	end
+	if isZombieMode then
+		local char = player.Character
+		if char then
+			local animate = char:FindFirstChild("Animate")
+			if animate then
+				applyZombieAnims(animate)
+				toggleButton.BackgroundColor3 = Color3.fromRGB(0, 170, 70)
+			end
+		end
+	end
+end)
